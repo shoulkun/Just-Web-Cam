@@ -1,10 +1,6 @@
 name: Build Camera Selector APK
 
 on:
-  push:
-    branches:
-      - main
-      - camera-selector
   workflow_dispatch:
 
 permissions:
