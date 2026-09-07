@@ -3,6 +3,7 @@ name: Build Camera Selector APK
 on:
   push:
     branches:
+      - main
       - camera-selector
   workflow_dispatch:
 
@@ -29,74 +30,76 @@ jobs:
 
           activity = Path('app/src/main/java/net/codeedu/justwebcam/MainActivity.kt')
           text = activity.read_text()
-
-          text = text.replace(
-              'import android.os.Bundle\nimport android.util.Log\nimport android.widget.Switch\n',
-              'import android.os.Bundle\nimport android.hardware.camera2.CameraCharacteristics\nimport android.hardware.camera2.CameraManager\nimport android.util.Log\nimport android.widget.ArrayAdapter\nimport android.widget.Spinner\nimport android.widget.Switch\n'
-          )
-          text = text.replace(
-              '    private lateinit var autoStartSwitch: Switch\n    private lateinit var sharedPreferences: SharedPreferences\n',
-              '    private lateinit var autoStartSwitch: Switch\n    private lateinit var cameraSpinner: Spinner\n    private lateinit var sharedPreferences: SharedPreferences\n    private lateinit var cameraManager: CameraManager\n    private var availableCameraIds: List<String> = emptyList()\n    private var selectedCameraId: String? = null\n    private var initializingCameraSpinner = true\n'
-          )
-          text = text.replace(
-              '        private const val AUTO_START_STATE_KEY = "auto_start_state"\n        private const val PREF_FILE_KEY = "main_activity_prefs"\n',
-              '        private const val AUTO_START_STATE_KEY = "auto_start_state"\n        private const val CAMERA_ID_STATE_KEY = "camera_id_state"\n        private const val PREF_FILE_KEY = "main_activity_prefs"\n'
-          )
-          text = text.replace(
-              '        autoStartSwitch = findViewById(R.id.autoStartSwitch)\n',
-              '        autoStartSwitch = findViewById(R.id.autoStartSwitch)\n        cameraSpinner = findViewById(R.id.cameraSpinner)\n        cameraManager = getSystemService(CAMERA_SERVICE) as CameraManager\n'
-          )
-          text = text.replace(
-              '        val savedAutoStartState = sharedPreferences.getBoolean(AUTO_START_STATE_KEY, false)\n        autoStartSwitch.isChecked = savedAutoStartState\n',
-              '        val savedAutoStartState = sharedPreferences.getBoolean(AUTO_START_STATE_KEY, false)\n        autoStartSwitch.isChecked = savedAutoStartState\n        selectedCameraId = sharedPreferences.getString(CAMERA_ID_STATE_KEY, null)\n        refreshCameraList()\n'
-          )
-          text = text.replace(
-              '        autoStartSwitch.setOnCheckedChangeListener { _, isChecked ->\n            handleAutoStartSwitchChange(isChecked)\n        }\n',
-              '        autoStartSwitch.setOnCheckedChangeListener { _, isChecked ->\n            handleAutoStartSwitchChange(isChecked)\n        }\n\n        cameraSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {\n            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit\n\n            override fun onItemSelected(\n                parent: android.widget.AdapterView<*>?,\n                view: android.view.View?,\n                position: Int,\n                id: Long\n            ) {\n                if (position !in availableCameraIds.indices) return\n                val newCameraId = availableCameraIds[position]\n                val changed = newCameraId != selectedCameraId\n                selectedCameraId = newCameraId\n                sharedPreferences.edit { putString(CAMERA_ID_STATE_KEY, newCameraId) }\n                if (!initializingCameraSpinner && changed && isStreaming) {\n                    stopStreamingService()\n                    startStreamingService()\n                }\n                initializingCameraSpinner = false\n            }\n        }\n'
-          )
-          text = text.replace(
-              '    private fun handleAutoStartSwitchChange(isChecked: Boolean) {\n',
-              '    private fun refreshCameraList() {\n        runCatching {\n            availableCameraIds = cameraManager.cameraIdList.toList()\n            val labels = availableCameraIds.map { id ->\n                val characteristics = cameraManager.getCameraCharacteristics(id)\n                val facing = when (characteristics.get(CameraCharacteristics.LENS_FACING)) {\n                    CameraCharacteristics.LENS_FACING_FRONT -> "前置"\n                    CameraCharacteristics.LENS_FACING_BACK -> "后置"\n                    CameraCharacteristics.LENS_FACING_EXTERNAL -> "外接"\n                    else -> "未知"\n                }\n                "摄像头 $id ($facing)"\n            }\n            cameraSpinner.adapter = ArrayAdapter(\n                this,\n                android.R.layout.simple_spinner_item,\n                labels\n            ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }\n\n            val targetIndex = availableCameraIds.indexOf(selectedCameraId).takeIf { it >= 0 }\n                ?: availableCameraIds.indexOfFirst { id ->\n                    cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) ==\n                        CameraCharacteristics.LENS_FACING_BACK\n                }.takeIf { it >= 0 }\n                ?: 0\n\n            if (availableCameraIds.isNotEmpty()) {\n                selectedCameraId = availableCameraIds[targetIndex]\n                cameraSpinner.setSelection(targetIndex, false)\n                sharedPreferences.edit { putString(CAMERA_ID_STATE_KEY, selectedCameraId) }\n                cameraSpinner.isEnabled = true\n            } else {\n                cameraSpinner.isEnabled = false\n            }\n        }.onFailure { e ->\n            Log.e(TAG, "Failed to enumerate cameras", e)\n            availableCameraIds = emptyList()\n            cameraSpinner.isEnabled = false\n        }\n    }\n\n    private fun handleAutoStartSwitchChange(isChecked: Boolean) {\n'
-          )
-          text = text.replace(
-              '                putExtra(CameraStreamService.EXTRA_SHOW_TIMESTAMP, timestampSwitch.isChecked)\n',
-              '                putExtra(CameraStreamService.EXTRA_SHOW_TIMESTAMP, timestampSwitch.isChecked)\n                putExtra(CameraStreamService.EXTRA_CAMERA_ID, selectedCameraId)\n'
-          )
-          text = text.replace(
-              '        streamToggleButton.isEnabled = cameraPermissionGranted\n',
-              '        streamToggleButton.isEnabled = cameraPermissionGranted && availableCameraIds.isNotEmpty()\n'
-          )
-          activity.write_text(text)
+          if 'private lateinit var cameraSpinner: Spinner' not in text:
+              text = text.replace(
+                  'import android.os.Bundle\nimport android.util.Log\nimport android.widget.Switch\n',
+                  'import android.os.Bundle\nimport android.hardware.camera2.CameraCharacteristics\nimport android.hardware.camera2.CameraManager\nimport android.util.Log\nimport android.widget.ArrayAdapter\nimport android.widget.Spinner\nimport android.widget.Switch\n'
+              )
+              text = text.replace(
+                  '    private lateinit var autoStartSwitch: Switch\n    private lateinit var sharedPreferences: SharedPreferences\n',
+                  '    private lateinit var autoStartSwitch: Switch\n    private lateinit var cameraSpinner: Spinner\n    private lateinit var sharedPreferences: SharedPreferences\n    private lateinit var cameraManager: CameraManager\n    private var availableCameraIds: List<String> = emptyList()\n    private var selectedCameraId: String? = null\n    private var initializingCameraSpinner = true\n'
+              )
+              text = text.replace(
+                  '        private const val AUTO_START_STATE_KEY = "auto_start_state"\n        private const val PREF_FILE_KEY = "main_activity_prefs"\n',
+                  '        private const val AUTO_START_STATE_KEY = "auto_start_state"\n        private const val CAMERA_ID_STATE_KEY = "camera_id_state"\n        private const val PREF_FILE_KEY = "main_activity_prefs"\n'
+              )
+              text = text.replace(
+                  '        autoStartSwitch = findViewById(R.id.autoStartSwitch)\n',
+                  '        autoStartSwitch = findViewById(R.id.autoStartSwitch)\n        cameraSpinner = findViewById(R.id.cameraSpinner)\n        cameraManager = getSystemService(CAMERA_SERVICE) as CameraManager\n'
+              )
+              text = text.replace(
+                  '        val savedAutoStartState = sharedPreferences.getBoolean(AUTO_START_STATE_KEY, false)\n        autoStartSwitch.isChecked = savedAutoStartState\n',
+                  '        val savedAutoStartState = sharedPreferences.getBoolean(AUTO_START_STATE_KEY, false)\n        autoStartSwitch.isChecked = savedAutoStartState\n        selectedCameraId = sharedPreferences.getString(CAMERA_ID_STATE_KEY, null)\n        refreshCameraList()\n'
+              )
+              text = text.replace(
+                  '        autoStartSwitch.setOnCheckedChangeListener { _, isChecked ->\n            handleAutoStartSwitchChange(isChecked)\n        }\n',
+                  '        autoStartSwitch.setOnCheckedChangeListener { _, isChecked ->\n            handleAutoStartSwitchChange(isChecked)\n        }\n\n        cameraSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {\n            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit\n\n            override fun onItemSelected(\n                parent: android.widget.AdapterView<*>?,\n                view: android.view.View?,\n                position: Int,\n                id: Long\n            ) {\n                if (position !in availableCameraIds.indices) return\n                val newCameraId = availableCameraIds[position]\n                val changed = newCameraId != selectedCameraId\n                selectedCameraId = newCameraId\n                sharedPreferences.edit { putString(CAMERA_ID_STATE_KEY, newCameraId) }\n                if (!initializingCameraSpinner && changed && isStreaming) {\n                    stopStreamingService()\n                    startStreamingService()\n                }\n                initializingCameraSpinner = false\n            }\n        }\n'
+              )
+              text = text.replace(
+                  '    private fun handleAutoStartSwitchChange(isChecked: Boolean) {\n',
+                  '    private fun refreshCameraList() {\n        runCatching {\n            availableCameraIds = cameraManager.cameraIdList.toList()\n            val labels = availableCameraIds.map { id ->\n                val characteristics = cameraManager.getCameraCharacteristics(id)\n                val facing = when (characteristics.get(CameraCharacteristics.LENS_FACING)) {\n                    CameraCharacteristics.LENS_FACING_FRONT -> "前置"\n                    CameraCharacteristics.LENS_FACING_BACK -> "后置"\n                    CameraCharacteristics.LENS_FACING_EXTERNAL -> "外接"\n                    else -> "未知"\n                }\n                "摄像头 $id ($facing)"\n            }\n            cameraSpinner.adapter = ArrayAdapter(\n                this,\n                android.R.layout.simple_spinner_item,\n                labels\n            ).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }\n\n            val targetIndex = availableCameraIds.indexOf(selectedCameraId).takeIf { it >= 0 }\n                ?: availableCameraIds.indexOfFirst { id ->\n                    cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) ==\n                        CameraCharacteristics.LENS_FACING_BACK\n                }.takeIf { it >= 0 }\n                ?: 0\n\n            if (availableCameraIds.isNotEmpty()) {\n                selectedCameraId = availableCameraIds[targetIndex]\n                cameraSpinner.setSelection(targetIndex, false)\n                sharedPreferences.edit { putString(CAMERA_ID_STATE_KEY, selectedCameraId) }\n                cameraSpinner.isEnabled = true\n            } else {\n                cameraSpinner.isEnabled = false\n            }\n        }.onFailure { e ->\n            Log.e(TAG, "Failed to enumerate cameras", e)\n            availableCameraIds = emptyList()\n            cameraSpinner.isEnabled = false\n        }\n    }\n\n    private fun handleAutoStartSwitchChange(isChecked: Boolean) {\n'
+              )
+              text = text.replace(
+                  '                putExtra(CameraStreamService.EXTRA_SHOW_TIMESTAMP, timestampSwitch.isChecked)\n',
+                  '                putExtra(CameraStreamService.EXTRA_SHOW_TIMESTAMP, timestampSwitch.isChecked)\n                putExtra(CameraStreamService.EXTRA_CAMERA_ID, selectedCameraId)\n'
+              )
+              text = text.replace(
+                  '        streamToggleButton.isEnabled = cameraPermissionGranted\n',
+                  '        streamToggleButton.isEnabled = cameraPermissionGranted && availableCameraIds.isNotEmpty()\n'
+              )
+              activity.write_text(text)
 
           service = Path('app/src/main/java/net/codeedu/justwebcam/CameraStreamService.kt')
           text = service.read_text()
-          text = text.replace(
-              '    private var showTimestampOverlay = true\n',
-              '    private var showTimestampOverlay = true\n    private var selectedCameraId: String? = null\n'
-          )
-          text = text.replace(
-              '        const val ACTION_UPDATE_TIMESTAMP_STATE =\n            "net.codeedu.justwebcam.ACTION_UPDATE_TIMESTAMP_STATE"\n        const val EXTRA_SHOW_TIMESTAMP = "net.codeedu.justwebcam.EXTRA_SHOW_TIMESTAMP"\n',
-              '        const val ACTION_UPDATE_TIMESTAMP_STATE =\n            "net.codeedu.justwebcam.ACTION_UPDATE_TIMESTAMP_STATE"\n        const val EXTRA_SHOW_TIMESTAMP = "net.codeedu.justwebcam.EXTRA_SHOW_TIMESTAMP"\n        const val EXTRA_CAMERA_ID = "net.codeedu.justwebcam.EXTRA_CAMERA_ID"\n'
-          )
-          text = text.replace(
-              '            ACTION_START_STREAM -> {\n                startForegroundService()\n                showTimestampOverlay = intent.getBooleanExtra(EXTRA_SHOW_TIMESTAMP, true)\n',
-              '            ACTION_START_STREAM -> {\n                selectedCameraId = intent.getStringExtra(EXTRA_CAMERA_ID)\n                showTimestampOverlay = intent.getBooleanExtra(EXTRA_SHOW_TIMESTAMP, true)\n                startForegroundService()\n'
-          )
-          old = '''            cameraId = cameraManager.cameraIdList.firstOrNull { id ->\n                cameraManager.getCameraCharacteristics(id)\n                    .get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK\n            } ?: throw IllegalStateException("Back camera not found")\n'''
-          new = '''            val availableIds = cameraManager.cameraIdList.toList()\n            cameraId = selectedCameraId\n                ?.takeIf { it in availableIds }\n                ?: availableIds.firstOrNull { id ->\n                    cameraManager.getCameraCharacteristics(id)\n                        .get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK\n                }\n                ?: availableIds.firstOrNull()\n                ?: throw IllegalStateException("No camera found")\n'''
-          if old not in text:
-              raise SystemExit('Camera selection block not found')
-          text = text.replace(old, new)
-          service.write_text(text)
+          if 'private var selectedCameraId: String? = null' not in text:
+              text = text.replace(
+                  '    private var showTimestampOverlay = true\n',
+                  '    private var showTimestampOverlay = true\n    private var selectedCameraId: String? = null\n'
+              )
+              text = text.replace(
+                  '        const val EXTRA_SHOW_TIMESTAMP = "net.codeedu.justwebcam.EXTRA_SHOW_TIMESTAMP"\n',
+                  '        const val EXTRA_SHOW_TIMESTAMP = "net.codeedu.justwebcam.EXTRA_SHOW_TIMESTAMP"\n        const val EXTRA_CAMERA_ID = "net.codeedu.justwebcam.EXTRA_CAMERA_ID"\n'
+              )
+              text = text.replace(
+                  '            ACTION_START_STREAM -> {\n                startForegroundService()\n                showTimestampOverlay = intent.getBooleanExtra(EXTRA_SHOW_TIMESTAMP, true)\n',
+                  '            ACTION_START_STREAM -> {\n                selectedCameraId = intent.getStringExtra(EXTRA_CAMERA_ID)\n                showTimestampOverlay = intent.getBooleanExtra(EXTRA_SHOW_TIMESTAMP, true)\n                startForegroundService()\n'
+              )
+              old = '''            cameraId = cameraManager.cameraIdList.firstOrNull { id ->\n                cameraManager.getCameraCharacteristics(id)\n                    .get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK\n            } ?: throw IllegalStateException("Back camera not found")\n'''
+              new = '''            val availableIds = cameraManager.cameraIdList.toList()\n            cameraId = selectedCameraId\n                ?.takeIf { it in availableIds }\n                ?: availableIds.firstOrNull { id ->\n                    cameraManager.getCameraCharacteristics(id)\n                        .get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK\n                }\n                ?: availableIds.firstOrNull()\n                ?: throw IllegalStateException("No camera found")\n'''
+              if old not in text:
+                  raise SystemExit('Camera selection block not found')
+              text = text.replace(old, new)
+              service.write_text(text)
 
           layout = Path('app/src/main/res/layout/activity_main.xml')
           text = layout.read_text()
-          marker = '''        <TextView\n            android:id="@+id/ipAddressTextView"\n'''
-          insert = '''        <TextView\n            android:layout_width="wrap_content"\n            android:layout_height="wrap_content"\n            android:text="激活的摄像头"\n            android:textStyle="bold" />\n\n        <Spinner\n            android:id="@+id/cameraSpinner"\n            android:layout_width="match_parent"\n            android:layout_height="wrap_content"\n            android:layout_marginBottom="8dp" />\n\n'''
-          if marker not in text:
-              raise SystemExit('Layout marker not found')
-          text = text.replace(marker, insert + marker, 1)
-          layout.write_text(text)
+          if 'android:id="@+id/cameraSpinner"' not in text:
+              marker = '''        <TextView\n            android:id="@+id/ipAddressTextView"\n'''
+              insert = '''        <TextView\n            android:layout_width="wrap_content"\n            android:layout_height="wrap_content"\n            android:text="激活的摄像头"\n            android:textStyle="bold" />\n\n        <Spinner\n            android:id="@+id/cameraSpinner"\n            android:layout_width="match_parent"\n            android:layout_height="wrap_content"\n            android:layout_marginBottom="8dp" />\n\n'''
+              if marker not in text:
+                  raise SystemExit('Layout marker not found')
+              text = text.replace(marker, insert + marker, 1)
+              layout.write_text(text)
 
       - name: Commit patched source
         run: |
